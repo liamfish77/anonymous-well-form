@@ -133,6 +133,11 @@
 
         async function initializeAppAndAuth() {
             try {
+                // Check if firebaseConfig has a projectId, which is required
+                if (!firebaseConfig.projectId) {
+                    throw new Error("Firebase config not found. The app may not function as expected.");
+                }
+
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
