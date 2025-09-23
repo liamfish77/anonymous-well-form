@@ -108,134 +108,65 @@
         
         <!-- App info and User ID section -->
         <footer class="text-center text-xs text-slate-400 mt-8">
-            <p>App ID: <span id="appId">Loading...</span></p>
-            <p>User ID: <span id="userId">Loading...</span></p>
+            <p>This is a local version. Submissions are only stored on this device.</p>
         </footer>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, setLogLevel } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let app, db, auth, userId = null;
-        let isAuthReady = false;
-
+    <!-- Local Storage Logic -->
+    <script>
+        const STORAGE_KEY = 'anonymous-form-submissions';
+        
         document.addEventListener('DOMContentLoaded', () => {
-            setLogLevel('debug');
-            initializeAppAndAuth();
+            document.getElementById('loading').classList.add('hidden');
+            loadSubmissions();
         });
 
-        async function initializeAppAndAuth() {
-            try {
-                // Check if firebaseConfig has a projectId, which is required
-                if (!firebaseConfig.projectId) {
-                    throw new Error("Firebase config not found. The app may not function as expected.");
-                }
+        function loadSubmissions() {
+            const storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            
+            const goingWellList = document.getElementById('goingWellList');
+            const notGoingWellList = document.getElementById('notGoingWellList');
+            goingWellList.innerHTML = '';
+            notGoingWellList.innerHTML = '';
 
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                document.getElementById('appId').textContent = appId;
-
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                auth.onAuthStateChanged(user => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('userId').textContent = userId;
-                        isAuthReady = true;
-                        console.log("User authenticated with UID:", userId);
-                        setupFirestoreListener();
-                    } else {
-                        document.getElementById('userId').textContent = "Not authenticated";
-                    }
-                });
-
-            } catch (error) {
-                console.error("Firebase init or auth error:", error);
-                document.getElementById('statusMessage').textContent = `Error: ${error.message}`;
-                document.getElementById('statusMessage').classList.add('text-red-500', 'opacity-100');
-            }
-        }
-
-        function setupFirestoreListener() {
-            if (!isAuthReady) {
-                console.warn("Auth not ready. Skipping Firestore listener setup.");
+            if (storedSubmissions.length === 0) {
+                goingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
+                notGoingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
                 return;
             }
 
-            const submissionsCollectionPath = `/artifacts/${appId}/public/data/anonymous-submissions`;
-            const submissionsRef = collection(db, submissionsCollectionPath);
-            const q = query(submissionsRef, orderBy('createdAt', 'desc'));
+            // Sort submissions by creation time, descending
+            storedSubmissions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            onSnapshot(q, (snapshot) => {
-                const goingWellList = document.getElementById('goingWellList');
-                const notGoingWellList = document.getElementById('notGoingWellList');
-                goingWellList.innerHTML = '';
-                notGoingWellList.innerHTML = '';
-                document.getElementById('loading').classList.add('hidden');
+            storedSubmissions.forEach(submission => {
+                const submissionItem = document.createElement('div');
+                let listToAppendTo;
 
-                if (snapshot.empty) {
-                    goingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
-                    notGoingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
-                    return;
+                if (submission.type === 'going-well') {
+                    submissionItem.classList.add('going-well');
+                    listToAppendTo = goingWellList;
+                } else {
+                    submissionItem.classList.add('not-going-well');
+                    listToAppendTo = notGoingWellList;
                 }
 
-                snapshot.forEach((doc) => {
-                    const submission = doc.data();
-                    const submissionItem = document.createElement('div');
-                    let listToAppendTo;
+                submissionItem.classList.add('p-4', 'rounded-lg', 'border');
 
-                    if (submission.type === 'going-well') {
-                        submissionItem.classList.add('going-well');
-                        listToAppendTo = goingWellList;
-                    } else if (submission.type === 'not-going-well') {
-                        submissionItem.classList.add('not-going-well');
-                        listToAppendTo = notGoingWellList;
-                    } else {
-                        // Default for submissions from before this change
-                        submissionItem.classList.add('going-well');
-                        listToAppendTo = goingWellList;
-                    }
+                const text = document.createElement('p');
+                text.classList.add('text-slate-700', 'text-sm', 'whitespace-pre-wrap');
+                text.textContent = submission.text;
 
-                    submissionItem.classList.add('p-4', 'rounded-lg', 'border');
-
-                    const text = document.createElement('p');
-                    text.classList.add('text-slate-700', 'text-sm', 'whitespace-pre-wrap');
-                    text.textContent = submission.text;
-
-                    const timestamp = document.createElement('p');
-                    timestamp.classList.add('text-right', 'text-xs', 'text-slate-500', 'mt-2');
-                    if (submission.createdAt && submission.createdAt.toDate) {
-                        timestamp.textContent = `Submitted: ${submission.createdAt.toDate().toLocaleString()}`;
-                    } else {
-                        timestamp.textContent = 'Submitted: Just now';
-                    }
-                    
-                    submissionItem.appendChild(text);
-                    submissionItem.appendChild(timestamp);
-                    listToAppendTo.appendChild(submissionItem);
-                });
-            }, (error) => {
-                console.error("Error fetching submissions:", error);
-                document.getElementById('statusMessage').textContent = `Error loading submissions: ${error.message}`;
-                document.getElementById('statusMessage').classList.add('text-red-500', 'opacity-100');
-                document.getElementById('loading').classList.add('hidden');
+                const timestamp = document.createElement('p');
+                timestamp.classList.add('text-right', 'text-xs', 'text-slate-500', 'mt-2');
+                timestamp.textContent = `Submitted: ${new Date(submission.createdAt).toLocaleString()}`;
+                
+                submissionItem.appendChild(text);
+                submissionItem.appendChild(timestamp);
+                listToAppendTo.appendChild(submissionItem);
             });
         }
 
-        document.getElementById('submissionForm').addEventListener('submit', async (e) => {
+        document.getElementById('submissionForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const submitBtn = document.getElementById('submitBtn');
             const submissionTextarea = document.getElementById('submissionText');
@@ -255,22 +186,24 @@
             statusMessage.classList.remove('opacity-100');
 
             try {
-                if (!db) throw new Error("Firestore is not initialized.");
-                
-                const submissionsCollectionPath = `/artifacts/${appId}/public/data/anonymous-submissions`;
-                await addDoc(collection(db, submissionsCollectionPath), {
+                const storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+                const newSubmission = {
                     text: text,
                     type: submissionType,
-                    createdAt: serverTimestamp()
-                });
+                    createdAt: new Date().toISOString()
+                };
+                storedSubmissions.push(newSubmission);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(storedSubmissions));
 
                 submissionTextarea.value = '';
                 statusMessage.textContent = 'Submission successful!';
                 statusMessage.classList.remove('text-red-500');
                 statusMessage.classList.add('text-green-500', 'opacity-100');
+                
+                loadSubmissions();
 
             } catch (error) {
-                console.error("Error adding document:", error);
+                console.error("Error adding submission:", error);
                 statusMessage.textContent = `Error: ${error.message}`;
                 statusMessage.classList.remove('text-green-500');
                 statusMessage.classList.add('text-red-500', 'opacity-100');
