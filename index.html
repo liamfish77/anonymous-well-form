@@ -115,7 +115,17 @@
     <!-- Local Storage Logic -->
     <script>
         const STORAGE_KEY = 'anonymous-form-submissions';
-        
+        const USER_ID_KEY = 'anonymous-form-user-id';
+
+        function getUserId() {
+            let userId = localStorage.getItem(USER_ID_KEY);
+            if (!userId) {
+                userId = crypto.randomUUID();
+                localStorage.setItem(USER_ID_KEY, userId);
+            }
+            return userId;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('loading').classList.add('hidden');
             loadSubmissions();
@@ -123,6 +133,7 @@
 
         function loadSubmissions() {
             const storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const userId = getUserId();
             
             const goingWellList = document.getElementById('goingWellList');
             const notGoingWellList = document.getElementById('notGoingWellList');
@@ -138,7 +149,7 @@
             // Sort submissions by creation time, descending
             storedSubmissions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            storedSubmissions.forEach(submission => {
+            storedSubmissions.forEach((submission, index) => {
                 const submissionItem = document.createElement('div');
                 let listToAppendTo;
 
@@ -150,7 +161,7 @@
                     listToAppendTo = notGoingWellList;
                 }
 
-                submissionItem.classList.add('p-4', 'rounded-lg', 'border');
+                submissionItem.classList.add('p-4', 'rounded-lg', 'border', 'relative', 'group');
 
                 const text = document.createElement('p');
                 text.classList.add('text-slate-700', 'text-sm', 'whitespace-pre-wrap');
@@ -162,6 +173,21 @@
                 
                 submissionItem.appendChild(text);
                 submissionItem.appendChild(timestamp);
+
+                if (submission.userId === userId) {
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.classList.add('absolute', 'top-2', 'right-2', 'space-x-1', 'opacity-0', 'group-hover:opacity-100', 'transition-opacity', 'duration-300');
+                    
+                    const deleteButton = document.createElement('button');
+                    deleteButton.classList.add('delete-btn', 'text-red-500', 'hover:text-red-700', 'p-1', 'rounded-full', 'bg-white/50', 'hover:bg-white', 'transition-colors');
+                    deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 00-2 0v5a1 1 0 002 0V7z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>`;
+                    deleteButton.title = "Delete";
+                    deleteButton.dataset.index = index;
+
+                    actionsDiv.appendChild(deleteButton);
+                    submissionItem.appendChild(actionsDiv);
+                }
+
                 listToAppendTo.appendChild(submissionItem);
             });
         }
@@ -190,7 +216,8 @@
                 const newSubmission = {
                     text: text,
                     type: submissionType,
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    userId: getUserId()
                 };
                 storedSubmissions.push(newSubmission);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(storedSubmissions));
@@ -215,6 +242,22 @@
                 }, 2000);
             }
         });
+
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.delete-btn')) {
+                const item = e.target.closest('div');
+                const index = parseInt(item.dataset.index);
+                deleteSubmission(index);
+            }
+        });
+
+        function deleteSubmission(index) {
+            let storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            storedSubmissions.splice(index, 1);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(storedSubmissions));
+            loadSubmissions();
+        }
+
     </script>
 </body>
 </html>
