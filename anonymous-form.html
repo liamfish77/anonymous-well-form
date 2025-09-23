@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Form</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .container {
+            max-width: 900px;
+        }
+        .submission-card {
+            background-color: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .submissions-list {
+            height: 32rem;
+            overflow-y: auto;
+        }
+        .submissions-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .submissions-list::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+        .submissions-list::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+        }
+        .going-well {
+            background-color: #f0fdf4; /* green-50 */
+            border-color: #bbf7d0; /* green-200 */
+        }
+        .not-going-well {
+            background-color: #fef2f2; /* red-50 */
+            border-color: #fecaca; /* red-200 */
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 p-4 sm:p-8">
+
+    <div class="container mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-slate-900 mb-2">Anonymous Thoughts</h1>
+            <p class="text-slate-600">Share your thoughts with the community. Everything you post is public and anonymous.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Left Column: Form -->
+            <div class="submission-card p-6 border border-slate-200">
+                <h2 class="text-2xl font-bold mb-4 text-slate-900">Add a Submission</h2>
+                <form id="submissionForm" class="flex flex-col space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-slate-700">Category:</label>
+                        <div class="flex items-center space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" class="form-radio text-green-600 focus:ring-green-500" name="submissionType" value="going-well" checked>
+                                <span class="ml-2">Going Well</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" class="form-radio text-red-600 focus:ring-red-500" name="submissionType" value="not-going-well">
+                                <span class="ml-2">Not Going Well</span>
+                            </label>
+                        </div>
+                    </div>
+                    <textarea id="submissionText" class="w-full p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" rows="6" placeholder="What's on your mind?"></textarea>
+                    <div id="statusMessage" class="text-center text-sm font-medium transition-opacity duration-300 opacity-0"></div>
+                    <button id="submitBtn" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-700 transition-all duration-300 transform active:scale-95 disabled:bg-blue-400 disabled:cursor-not-allowed">
+                        Submit Anonymously
+                    </button>
+                </form>
+            </div>
+
+            <!-- Right Column: Submissions -->
+            <div class="submission-card p-6 border border-slate-200 col-span-1 md:col-span-2">
+                <h2 class="text-2xl font-bold mb-4 text-slate-900">Community Submissions</h2>
+                <div id="loading" class="flex justify-center items-center py-8">
+                    <svg class="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2 text-green-700">What's Going Well?</h3>
+                        <div id="goingWellList" class="submissions-list space-y-4 pr-2">
+                            <!-- "Going Well" submissions here -->
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2 text-red-700">What's Not Going Well?</h3>
+                        <div id="notGoingWellList" class="submissions-list space-y-4 pr-2">
+                            <!-- "Not Going Well" submissions here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- App info and User ID section -->
+        <footer class="text-center text-xs text-slate-400 mt-8">
+            <p>App ID: <span id="appId">Loading...</span></p>
+            <p>User ID: <span id="userId">Loading...</span></p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, setLogLevel } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId = null;
+        let isAuthReady = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setLogLevel('debug');
+            initializeAppAndAuth();
+        });
+
+        async function initializeAppAndAuth() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                document.getElementById('appId').textContent = appId;
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('userId').textContent = userId;
+                        isAuthReady = true;
+                        console.log("User authenticated with UID:", userId);
+                        setupFirestoreListener();
+                    } else {
+                        document.getElementById('userId').textContent = "Not authenticated";
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase init or auth error:", error);
+                document.getElementById('statusMessage').textContent = `Error: ${error.message}`;
+                document.getElementById('statusMessage').classList.add('text-red-500', 'opacity-100');
+            }
+        }
+
+        function setupFirestoreListener() {
+            if (!isAuthReady) {
+                console.warn("Auth not ready. Skipping Firestore listener setup.");
+                return;
+            }
+
+            const submissionsCollectionPath = `/artifacts/${appId}/public/data/anonymous-submissions`;
+            const submissionsRef = collection(db, submissionsCollectionPath);
+            const q = query(submissionsRef, orderBy('createdAt', 'desc'));
+
+            onSnapshot(q, (snapshot) => {
+                const goingWellList = document.getElementById('goingWellList');
+                const notGoingWellList = document.getElementById('notGoingWellList');
+                goingWellList.innerHTML = '';
+                notGoingWellList.innerHTML = '';
+                document.getElementById('loading').classList.add('hidden');
+
+                if (snapshot.empty) {
+                    goingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
+                    notGoingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const submission = doc.data();
+                    const submissionItem = document.createElement('div');
+                    let listToAppendTo;
+
+                    if (submission.type === 'going-well') {
+                        submissionItem.classList.add('going-well');
+                        listToAppendTo = goingWellList;
+                    } else if (submission.type === 'not-going-well') {
+                        submissionItem.classList.add('not-going-well');
+                        listToAppendTo = notGoingWellList;
+                    } else {
+                        // Default for submissions from before this change
+                        submissionItem.classList.add('going-well');
+                        listToAppendTo = goingWellList;
+                    }
+
+                    submissionItem.classList.add('p-4', 'rounded-lg', 'border');
+
+                    const text = document.createElement('p');
+                    text.classList.add('text-slate-700', 'text-sm', 'whitespace-pre-wrap');
+                    text.textContent = submission.text;
+
+                    const timestamp = document.createElement('p');
+                    timestamp.classList.add('text-right', 'text-xs', 'text-slate-500', 'mt-2');
+                    if (submission.createdAt && submission.createdAt.toDate) {
+                        timestamp.textContent = `Submitted: ${submission.createdAt.toDate().toLocaleString()}`;
+                    } else {
+                        timestamp.textContent = 'Submitted: Just now';
+                    }
+                    
+                    submissionItem.appendChild(text);
+                    submissionItem.appendChild(timestamp);
+                    listToAppendTo.appendChild(submissionItem);
+                });
+            }, (error) => {
+                console.error("Error fetching submissions:", error);
+                document.getElementById('statusMessage').textContent = `Error loading submissions: ${error.message}`;
+                document.getElementById('statusMessage').classList.add('text-red-500', 'opacity-100');
+                document.getElementById('loading').classList.add('hidden');
+            });
+        }
+
+        document.getElementById('submissionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submitBtn');
+            const submissionTextarea = document.getElementById('submissionText');
+            const statusMessage = document.getElementById('statusMessage');
+
+            const text = submissionTextarea.value.trim();
+            const submissionType = document.querySelector('input[name="submissionType"]:checked').value;
+            
+            if (!text) {
+                statusMessage.textContent = 'Please enter some text.';
+                statusMessage.classList.add('text-red-500', 'opacity-100');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            statusMessage.classList.remove('opacity-100');
+
+            try {
+                if (!db) throw new Error("Firestore is not initialized.");
+                
+                const submissionsCollectionPath = `/artifacts/${appId}/public/data/anonymous-submissions`;
+                await addDoc(collection(db, submissionsCollectionPath), {
+                    text: text,
+                    type: submissionType,
+                    createdAt: serverTimestamp()
+                });
+
+                submissionTextarea.value = '';
+                statusMessage.textContent = 'Submission successful!';
+                statusMessage.classList.remove('text-red-500');
+                statusMessage.classList.add('text-green-500', 'opacity-100');
+
+            } catch (error) {
+                console.error("Error adding document:", error);
+                statusMessage.textContent = `Error: ${error.message}`;
+                statusMessage.classList.remove('text-green-500');
+                statusMessage.classList.add('text-red-500', 'opacity-100');
+            } finally {
+                setTimeout(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Anonymously';
+                    statusMessage.classList.remove('opacity-100');
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>
