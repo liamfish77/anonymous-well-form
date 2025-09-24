@@ -108,48 +108,92 @@
         
         <!-- App info and User ID section -->
         <footer class="text-center text-xs text-slate-400 mt-8">
-            <p>This is a local version. Submissions are only stored on this device.</p>
+            <p>Submissions are public and updated in real-time.</p>
         </footer>
     </div>
 
-    <!-- Local Storage Logic -->
-    <script>
-        const STORAGE_KEY = 'anonymous-form-submissions';
-        const USER_ID_KEY = 'anonymous-form-user-id';
+    <!-- Firebase SDK and app logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        function getUserId() {
-            let userId = localStorage.getItem(USER_ID_KEY);
-            if (!userId) {
-                userId = crypto.randomUUID();
-                localStorage.setItem(USER_ID_KEY, userId);
+        // Global variables provided by the canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyABgQTD9TecMvyWqrPev_-4a4vRd5pgdaM",
+    authDomain: "ba-retro-db.firebaseapp.com",
+    projectId: "ba-retro-db",
+    storageBucket: "ba-retro-db.firebasestorage.app",
+    messagingSenderId: "160808857575",
+    appId: "1:160808857575:web:e3b2a7b8a14c8761eed742",
+    measurementId: "G-8KRL1ZS44E"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+        let db, auth;
+        let user;
+
+        // Initialize Firebase app and services
+        try {
+            if (!firebaseConfig.projectId) {
+                throw new Error("Firebase config not found. The app may not function as expected.");
             }
-            return userId;
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            signInAnonymously(auth).then(cred => {
+                user = cred.user;
+                setupRealtimeListener();
+            }).catch(error => {
+                console.error("Anonymous authentication failed:", error);
+            });
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+            document.getElementById('statusMessage').textContent = 'Error: App is not configured correctly.';
+            document.getElementById('statusMessage').classList.add('text-red-500', 'opacity-100');
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('loading').classList.add('hidden');
-            loadSubmissions();
-        });
+        const submissionsCollection = collection(db, `/artifacts/${appId}/public/data/submissions`);
 
-        function loadSubmissions() {
-            const storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const userId = getUserId();
-            
+        function setupRealtimeListener() {
+            const q = query(submissionsCollection, orderBy('createdAt', 'desc'));
+            onSnapshot(q, (snapshot) => {
+                const submissions = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                loadSubmissions(submissions);
+            });
+        }
+
+        function loadSubmissions(submissions) {
+            const userId = user ? user.uid : null;
             const goingWellList = document.getElementById('goingWellList');
             const notGoingWellList = document.getElementById('notGoingWellList');
             goingWellList.innerHTML = '';
             notGoingWellList.innerHTML = '';
 
-            if (storedSubmissions.length === 0) {
+            if (submissions.length === 0) {
                 goingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
                 notGoingWellList.innerHTML = '<p class="text-center text-slate-500 italic mt-8">No submissions yet.</p>';
                 return;
             }
 
-            // Sort submissions by creation time, descending
-            storedSubmissions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-            storedSubmissions.forEach(submission => {
+            submissions.forEach(submission => {
                 const submissionItem = document.createElement('div');
                 let listToAppendTo;
 
@@ -169,7 +213,7 @@
 
                 const timestamp = document.createElement('p');
                 timestamp.classList.add('text-right', 'text-xs', 'text-slate-500', 'mt-2');
-                timestamp.textContent = `Submitted: ${new Date(submission.createdAt).toLocaleString()}`;
+                timestamp.textContent = `Submitted: ${new Date(submission.createdAt.toDate()).toLocaleString()}`;
                 
                 submissionItem.appendChild(text);
                 submissionItem.appendChild(timestamp);
@@ -192,7 +236,7 @@
             });
         }
 
-        document.getElementById('submissionForm').addEventListener('submit', (e) => {
+        document.getElementById('submissionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const submitBtn = document.getElementById('submitBtn');
             const submissionTextarea = document.getElementById('submissionText');
@@ -212,24 +256,19 @@
             statusMessage.classList.remove('opacity-100');
 
             try {
-                const storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
                 const newSubmission = {
-                    id: crypto.randomUUID(),
                     text: text,
                     type: submissionType,
-                    createdAt: new Date().toISOString(),
-                    userId: getUserId()
+                    createdAt: new Date(),
+                    userId: user.uid
                 };
-                storedSubmissions.push(newSubmission);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(storedSubmissions));
+                await addDoc(submissionsCollection, newSubmission);
 
                 submissionTextarea.value = '';
                 statusMessage.textContent = 'Submission successful!';
                 statusMessage.classList.remove('text-red-500');
                 statusMessage.classList.add('text-green-500', 'opacity-100');
                 
-                loadSubmissions();
-
             } catch (error) {
                 console.error("Error adding submission:", error);
                 statusMessage.textContent = `Error: ${error.message}`;
@@ -244,20 +283,17 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', async (e) => {
             if (e.target.closest('.delete-btn')) {
                 const button = e.target.closest('.delete-btn');
                 const submissionId = button.dataset.id;
-                deleteSubmission(submissionId);
+                try {
+                    await deleteDoc(doc(db, `/artifacts/${appId}/public/data/submissions`, submissionId));
+                } catch (error) {
+                    console.error("Error deleting document:", error);
+                }
             }
         });
-
-        function deleteSubmission(idToDelete) {
-            let storedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const updatedSubmissions = storedSubmissions.filter(sub => sub.id !== idToDelete);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSubmissions));
-            loadSubmissions();
-        }
 
     </script>
 </body>
